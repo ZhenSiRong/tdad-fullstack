@@ -1,2 +1,0 @@
-src/calculator.py: tests/test_calculator.py
-src/utils.py: tests/test_utils.py
