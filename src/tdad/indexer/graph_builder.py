@@ -8,25 +8,49 @@ from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
 from .ast_parser import FileInfo, parse_file
+from .parsers import EXTENSION_LANGUAGE_MAP, get_parser_registry, parse_file_for_language
 
 logger = logging.getLogger(__name__)
 
-SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".tox", ".eggs", "dist", "build"}
+SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".tox", ".eggs", "dist", "build", "target"}
+
+
+def _collect_source_files(repo_path: Path) -> List[Path]:
+    """Walk repo for source files across all supported languages, skipping common non-source directories.
+
+    Multi-language version (tdad-fullstack fork): picks up .py / .js / .jsx / .mjs / .cjs /
+    .ts / .tsx / .vue / .go — everything in EXTENSION_LANGUAGE_MAP.
+    """
+    files = []
+    for ext in EXTENSION_LANGUAGE_MAP.keys():
+        for p in repo_path.rglob(f"*{ext}"):
+            if any(part in SKIP_DIRS for part in p.parts):
+                continue
+            files.append(p)
+    # Deduplicate (rglob with multiple globs can in theory repeat; cheap to dedupe)
+    return sorted(set(files))
 
 
 def _collect_python_files(repo_path: Path) -> List[Path]:
-    """Walk repo for .py files, skipping common non-source directories."""
-    files = []
-    for p in repo_path.rglob("*.py"):
-        if any(part in SKIP_DIRS for part in p.parts):
-            continue
-        files.append(p)
-    return sorted(files)
+    """Backwards-compat alias for the original single-language function.
+
+    The original tdad had `_collect_python_files`; some test modules import it
+    by name. This alias keeps upstream test imports working while routing
+    through the multi-language collector (the original `*.py` rglob is a
+    subset of what `_collect_source_files` walks).
+    """
+    return _collect_source_files(repo_path)
 
 
 def _parse_file_worker(file_path_str: str, repo_root_str: str) -> FileInfo:
-    """Standalone worker function for ProcessPoolExecutor."""
-    return parse_file(Path(file_path_str), Path(repo_root_str))
+    """Standalone worker function for ProcessPoolExecutor.
+
+    Multi-language version: builds a fresh parser registry inside the worker
+    (parsers are cheap to construct; tree-sitter Language bindings are
+    stable across fork).
+    """
+    registry = get_parser_registry()
+    return parse_file_for_language(Path(file_path_str), Path(repo_root_str), registry)
 
 
 def _module_name(relative_path: str) -> str:
@@ -158,7 +182,7 @@ def build_graph(repo_path: Path, db, force: bool = False) -> Dict[str, Any]:
 
     db.ensure_schema()
 
-    python_files = _collect_python_files(repo_path)
+    python_files = _collect_source_files(repo_path)
     if not python_files:
         return {"files": 0, "functions": 0, "classes": 0, "tests": 0, "edges": 0,
                 "incremental": False, "changed": 0, "unchanged": 0, "deleted": 0}
