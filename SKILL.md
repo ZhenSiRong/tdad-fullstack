@@ -1,101 +1,124 @@
 ---
 name: tdad-fullstack
 description: >-
-  Test impact analysis for fullstack repos (Python + JS/TS/Vue/Go).
-  Fork of tdad with tree-sitter multi-language support. Use when you need to
-  find which tests are affected by code changes in a polyglot project — e.g.
-  changed a Python utility, want to know which pytest + vitest + jest files
-  need to re-run. Activate when you see a `.tdad-fullstack/` directory or a
-  polyglot repo with `package.json` alongside `pyproject.toml`. Replaces
-  ad-hoc `git diff | xargs jest --findRelatedTests` workflows with one graph.
+  Test impact analysis for fullstack repos. Fork of tdad v0.2.0 with Vue SFC
+  support and CLI enhancements. Use when you need to find which tests are
+  affected by code changes in a polyglot project — e.g. changed a Python
+  utility + a Vue component, want to know which pytest + vitest + jest files
+  to re-run. Activate when you see a `.tdad/` directory in a project with
+  both `pyproject.toml` (or `package.json`) AND `.vue` files, or when working
+  on a multi-language monorepo. Replaces ad-hoc `git diff | xargs jest
+  --findRelatedTests` workflows with one graph.
 license: MIT
 metadata:
   author: ZhenSiRong
   upstream: tdad (pepealonso95) — MIT, Copyright (c) 2026 Rafael Alonso
   fork-of: https://github.com/pepealonso95/tdad
+  upstream-version: "0.2.0"
+  fork-deltas: "vue-sfc-support + cli-changed-flag + multi-runner-dispatch + language-tagged-impact-report"
 ---
 
 # TDAD Fullstack
 
-**Multi-language test impact analysis.** Fork of [tdad](https://github.com/pepealonso95/tdad) that extends the original Python-only AST analyzer to JS / TS / Vue / Go via tree-sitter, producing a unified code-test graph for polyglot repos.
+**Multi-language test impact analysis with first-class Vue SFC support.**
+
+Fork of [tdad v0.2.0](https://github.com/pepealonso95/tdad) that adds:
+
+| What | Why |
+|---|---|
+| **Vue SFC** (`.vue`) parsing | Upstream v0.2.0 covers Python / JS / TS / Go / Java / Rust / Dart. **Vue is the gap this fork fills.** |
+| `tdad impact --changed [REF]` flag | Auto-discover changed files via `git diff` (Vitest-style). Upstream requires manual `--files`. |
+| Per-language tagging in `impact` output | Each row in the impacted-tests report shows `[python]` / `[jest]` / `[vitest]` / `[go]` / etc. so the agent knows which runner to dispatch to. |
+| `tdad run-tests --runner=auto` | Groups test files by language and calls `pytest` / `vitest run` / `jest --findRelatedTests` / `go test` per group. |
+
+Everything else (Python/JS/TS/Go/Java/Rust/Dart parsers, Neo4j/networkx backends, naming-convention + static-analysis test linker, the `tree-sitter-*` extras) is **inherited from upstream v0.2.0 unchanged**.
 
 ## When this skill activates
 
-- A `.tdad-fullstack/` directory exists in the repo
-- A polyglot project with both `pyproject.toml` and `package.json` (or `tsconfig.json`, `vue.config.js`, `go.mod`)
-- The user asks which tests to run after changing source files across languages
+- A `.tdad/` directory exists in the repo
+- The repo is polyglot and includes `.vue` files (or any combination of `.py` / `.js` / `.ts` / `.go` / `.java` / `.rs` / `.dart`)
+- You want to run *only* the tests affected by recent code changes
 
 ## Setup (one-time per repo)
 
 ```bash
-# Install CLI (comes with this skill — bin/tdad-fullstack in PATH after install)
-pip install -e .
+# Install CLI (npx symlinks bin/tdad-fullstack into PATH)
+npx skills add ZhenSiRong/tdad-fullstack
 
-# Build the multi-language code-test graph
+# OR via pip
+pip install -e ".[vue]"   # vue extra includes tree-sitter-javascript for parsing <script> blocks
+
+# Build the code-test graph
 tdad-fullstack index .
 ```
 
-This walks the repo, parses Python via stdlib `ast`, JS/TS/Vue via tree-sitter, and persists to `graph.pkl` (networkx) or Neo4j if `NEO4J_URI` is set.
+The first run auto-detects which languages are present in the repo.
 
-## Bug Fix / Feature Workflow
+## Workflow
 
-### 1. Make the change
+### 1. Make a change
 
-Edit source files normally.
+Edit source files as normal.
 
 ### 2. Find impacted tests
 
 ```bash
-# Option A: list which test files are affected (no run)
-tdad-fullstack impact . --files src/utils.py src/components/Button.vue
-
-# Option B: auto-detect from git diff
+# Auto-discover from git diff (Vitest-style — the killer feature of this fork)
+tdad-fullstack impact . --changed
 tdad-fullstack impact . --changed HEAD~1
+tdad-fullstack impact . --changed origin/main
 
-# Option C: full automation — git diff → affected tests → run them
-tdad-fullstack impact . --changed HEAD~1 --run
+# Or explicit file list
+tdad-fullstack impact . --files src/utils.py src/components/Button.vue
 ```
 
-Output (text mode): one line per impacted test file, prefixed with language tag:
+Output (Markdown table):
 
 ```
-[python] tests/test_utils.py
-[vitest]  tests/components/Button.spec.ts
-[jest]    tests/api/handler.test.js
+## Impacted Tests (3 found)
+
+| Score | Test | File | Language | Reason |
+|-------|------|------|----------|--------|
+| 0.88 | test_greet | src/test_utils.py | [python] | Directly tests changed code |
+| 0.72 | Button.spec | src/components/Button.spec.vue | [vitest] | Imports changed code |
+| 0.66 | api.test | frontend/__tests__/api.test.js | [jest] | Imports changed code |
 ```
+
+The **Language** column is your run-dispatch hint.
 
 ### 3. Run only the impacted tests
 
 ```bash
-tdad-fullstack run-tests . --tests tests/test_utils.py tests/components/Button.spec.ts
+# Auto-dispatch: pytest for .py, vitest for .vue, jest for .js/.ts, go test for .go
+tdad-fullstack run-tests . --tests src/test_utils.py src/components/Button.spec.vue --runner=auto
 ```
-
-This dispatches to `pytest` (Python files), `vitest related` (Vue files), `jest --findRelatedTests` (JS/TS), or `go test` (Go files) based on the test file's language.
-
-### 4. (Optional) WebUI
-
-This skill does not yet ship a WebUI. For a Vitest-native UI run `vitest --ui` separately (see https://vitest.dev/guide/ui). Roadmap: a thin Flask + Cytoscape.js viewer over `graph.pkl` is tracked in the build plan.
 
 ## Languages supported
 
-| Language   | Parser                | Test runner dispatch    |
-|------------|-----------------------|-------------------------|
-| Python     | stdlib `ast`          | `pytest`                |
-| JavaScript | tree-sitter-javascript| `jest` / `vitest related` |
-| TypeScript | tree-sitter-typescript| `jest` / `vitest related` |
-| Vue (SFC)  | @vue/compiler-sfc + tree-sitter-javascript | `vitest related` |
-| Go         | tree-sitter-go        | `go test`               |
-
-Other languages (Java, Rust, Dart) — see upstream `tdad` roadmap.
-
-## Where to read more
-
-- `references/upstream-design.md` — what we kept from tdad
-- `references/multi-language-design.md` — parser dispatch strategy
-- `references/cli-reference.md` — full CLI options
+| Language   | Parser (upstream)               | Test runner dispatch            |
+|------------|----------------------------------|----------------------------------|
+| Python     | stdlib `ast`                     | `pytest`                         |
+| JavaScript | tree-sitter-javascript           | `jest` / `vitest run`            |
+| TypeScript | tree-sitter-typescript           | `jest` / `vitest run`            |
+| **Vue (SFC)** | **regex-split + JS parser** (this fork) | **`vitest run`**            |
+| Go         | tree-sitter-go                   | `go test`                        |
+| Java       | tree-sitter-java                 | `mvn test`                       |
+| Rust       | tree-sitter-rust                 | `cargo test`                     |
+| Dart       | tree-sitter-dart-orchard         | `dart test`                      |
 
 ## Local conventions
 
-- Tests live in `tests/` (pytest) and `tests/` or `__tests__/` (jest/vitest) — discovered automatically
-- Configurable via `tdad-fullstack.toml` at repo root (see `references/config.md`)
-- Stale graph cache: re-run `tdad-fullstack index .` after major refactors
+- Tests live in `tests/` (pytest) or `__tests__/` (Vitest/Jest) — discovered automatically
+- For Vue: `*.spec.vue` / `*.test.vue` files, plus anything under `tests/` or `__tests__/`, are treated as test files
+- Re-run `tdad-fullstack index .` after major refactors (auto-incremental otherwise)
+- Neo4j is optional — without it, falls back to networkx + graph.pkl
+
+## When NOT to use this skill
+
+- The repo is **pure Python** and doesn't use Vue — use the upstream `tdad` skill instead (lighter, no Vue extras)
+- You need mutation testing (test quality, not test selection) — use Stryker / mutmut
+
+## See also
+
+- `references/upstream-design.md` — what we kept from tdad
+- `references/vue-sfc-design.md` — how Vue parsing works (regex split + JS reuse)

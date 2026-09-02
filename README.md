@@ -1,57 +1,76 @@
 # tdad-fullstack
 
-> Multi-language test impact analysis. Fork of [tdad](https://github.com/pepealonso95/tdad) with tree-sitter support for **JavaScript / TypeScript / Vue / Go** alongside the original Python.
+> Test impact analysis for fullstack repos. Fork of [tdad v0.2.0](https://github.com/pepealonso95/tdad) with **Vue SFC support** + CLI enhancements.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Upstream: tdad](https://img.shields.io/badge/upstream-tdad-0.1.0-green.svg)](https://github.com/pepealonso95/tdad)
+[![Upstream: tdad v0.2.0](https://img.shields.io/badge/upstream-tdad-0.2.0-green.svg)](https://github.com/pepealonso95/tdad)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
 
-## What it does
+## Why this fork exists
 
-Build a unified code-test dependency graph across a polyglot repo. When you change source files, answer **"which tests do I need to re-run?"** in one command — across pytest, vitest, jest, and go test.
+[tdad v0.2.0](https://github.com/pepealonso95/tdad) ships multi-language support for **Python / JavaScript / TypeScript / Go / Java / Rust / Dart** — but **not Vue**.
 
-```bash
-# Build the graph (one-time per repo)
-tdad-fullstack index .
+`tdad-fullstack` fills that gap. The fork is deliberately **narrow**:
 
-# You changed a Python + a Vue file — what's affected?
-tdad-fullstack impact . --files src/utils.py src/components/Button.vue
-
-# Output:
-#   [python] tests/test_utils.py
-#   [vitest] tests/components/Button.spec.ts
-
-# Auto-detect from git diff (last commit)
-tdad-fullstack impact . --changed HEAD~1
-
-# Run the impacted tests directly
-tdad-fullstack run-tests . --tests tests/test_utils.py tests/components/Button.spec.ts
-```
-
-## Why fork?
-
-The upstream [tdad](https://github.com/pepealonso95/tdad) ([paper](https://github.com/pepealonso95/tdad/blob/main/paper.pdf)) ships Python-only parsing via stdlib `ast`. This fork adds tree-sitter parsing for JS/TS/Vue/Go while keeping the upstream graph model, test linker, and runner dispatch logic intact.
-
-| Feature | Upstream tdad | tdad-fullstack |
+| Capability | Upstream v0.2.0 | This fork |
 |---|---|---|
-| Python (.py)            | ✅ stdlib `ast` | ✅ unchanged |
-| JavaScript (.js, .mjs)  | ❌ | ✅ tree-sitter-javascript |
-| TypeScript (.ts, .tsx)  | ❌ | ✅ tree-sitter-typescript |
-| Vue (.vue, SFC)         | ❌ | ✅ @vue/compiler-sfc + JS parser |
-| Go (.go)                | ❌ | ✅ tree-sitter-go |
-| Multi-lang graph merge  | n/a | ✅ unified `graph.pkl` |
-| Test dispatch           | pytest | pytest + vitest + jest + go test |
+| Python, JS, TS, Go, Java, Rust, Dart parsing | ✅ | ✅ (inherited, unchanged) |
+| **Vue SFC** (`.vue`) parsing | ❌ | ✅ |
+| `impact --changed [REF]` (Vitest-style git auto-discovery) | ❌ | ✅ |
+| Per-language tag in impact report (`[python]` / `[vitest]` / `[jest]` / `[go]`) | ❌ | ✅ |
+| `run-tests --runner=auto` (per-file language dispatch) | partial | ✅ (handles mixed-language test lists) |
+
+Everything else — the parsers, the graph DB, the test linker, the networkx/Neo4j backends, the `tree-sitter-*` extras — is **unchanged from upstream v0.2.0**.
 
 ## Install
 
 ```bash
 # As a pip package
-pip install tdad-fullstack
+pip install -e ".[vue]"
 
 # As an Agent Skill (npx)
 npx skills add ZhenSiRong/tdad-fullstack
 ```
 
+## Quick start
+
+```bash
+# Build the code-test graph (auto-detects languages)
+tdad-fullstack index .
+
+# You changed a Python file + a Vue component — what's affected?
+tdad-fullstack impact . --changed
+
+# Output (note the Language column):
+# | 0.88 | test_greet    | src/test_utils.py              | [python] | Directly tests changed code |
+# | 0.72 | Button.spec   | src/components/Button.spec.vue | [vitest] | Imports changed code         |
+
+# Run the impacted tests (auto-dispatches per language)
+tdad-fullstack run-tests . \
+  --tests src/test_utils.py src/components/Button.spec.vue \
+  --runner=auto
+```
+
+## How Vue parsing works (this fork's only addition)
+
+```
+.vue file                 Plugin                 Output
+─────────────────────────────────────────────────────────────────
+<script setup>            ┌──────────────┐       FileInfo with
+  import { ref }          │ VuePlugin    │       • language="vue"
+  from "vue"              │ (this fork)  │       • imports: ["vue", ...]
+  ...                     └──────┬───────┘       • is_test_file: True/False
+</script>                      │
+                               │ regex split SFC, take <script> body
+                               ▼
+                        ┌──────────────────┐
+                        │ JavaScriptPlugin │       (inherited from
+                        │ (upstream)       │       upstream v0.2.0)
+                        └──────────────────┘
+```
+
+No `@vue/compiler-sfc` dependency — just regex-split the `<script>` block and hand it to upstream's JavaScriptPlugin. About 100 lines of code total.
+
 ## License
 
-MIT — same as upstream. Copyright (c) 2026 Rafael Alonso (upstream) + ZhenSiRong (this fork). See [LICENSE](LICENSE).
+MIT — same as upstream tdad. Copyright (c) 2026 Rafael Alonso (upstream) + ZhenSiRong (this fork). See [LICENSE](LICENSE).

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tdad-fullstack"
-version = "0.2.0"
-description = "Multi-language test impact analysis. Fork of tdad with tree-sitter JS/TS/Vue/Go support."
+version = "0.2.1"
+description = "Test impact analysis for fullstack repos. Fork of tdad v0.2.0 with Vue SFC support."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -34,30 +34,29 @@ dependencies = [
 [project.optional-dependencies]
 neo4j = ["neo4j>=5.14.0"]
 coverage = ["coverage>=7.0.0"]
-# Multi-language support (added in this fork)
-js = [
-    "tree-sitter>=0.21.0",
-    "tree-sitter-javascript>=0.21.0",
+# Multi-language tree-sitter support (inherited from upstream v0.2.0)
+treesitter = [
+    "tree-sitter>=0.23",
+    "tree-sitter-javascript",
+    "tree-sitter-typescript",
 ]
-ts = [
-    "tree-sitter>=0.21.0",
-    "tree-sitter-typescript>=0.21.0",
+treesitter-go = ["tree-sitter>=0.23", "tree-sitter-go"]
+treesitter-java = ["tree-sitter>=0.23", "tree-sitter-java"]
+treesitter-rust = ["tree-sitter>=0.23", "tree-sitter-rust"]
+treesitter-dart = ["tree-sitter>=0.23", "tree-sitter-dart-orchard"]
+treesitter-all = [
+    "tree-sitter>=0.23",
+    "tree-sitter-javascript",
+    "tree-sitter-typescript",
+    "tree-sitter-go",
+    "tree-sitter-java",
+    "tree-sitter-rust",
+    "tree-sitter-dart-orchard",
 ]
+# Vue SFC support (this fork's delta over upstream v0.2.0)
 vue = [
-    "tree-sitter>=0.21.0",
-    "tree-sitter-javascript>=0.21.0",
-    "tree-sitter-vue>=0.0.6",
-]
-go = [
-    "tree-sitter>=0.21.0",
-    "tree-sitter-go>=0.21.0",
-]
-fullstack = [
-    "tree-sitter>=0.21.0",
-    "tree-sitter-javascript>=0.21.0",
-    "tree-sitter-typescript>=0.21.0",
-    "tree-sitter-vue>=0.0.6",
-    "tree-sitter-go>=0.21.0",
+    "tree-sitter>=0.23",
+    "tree-sitter-javascript",
 ]
 dev = [
     "pytest>=7.0.0",
